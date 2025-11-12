@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Event Seat Plan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #d4e4f6;
+            color: #2e3d4b;
+        }
+        .modal-overlay, #seat-sidebar {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            z-index: 40;
+        }
+        .modal-overlay.active, #seat-sidebar.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        #seat-sidebar {
+            transform: translateX(100%);
+            transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease-in-out;
+        }
+        #seat-sidebar.active {
+            transform: translateX(0);
+        }
+        .modal-content {
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+        .table-container {
+            touch-action: manipulation;
+        }
+        .seat {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .seat:hover {
+            transform: translate(-50%, -50%) scale(1.15);
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
+        .table-center:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 63, 97, 0.4);
+        }
+        .table-center {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="app-container" class="min-h-screen w-full">
+        <!-- Header -->
+        <header class="bg-[#003f61] text-[#f7f9ff] p-4 shadow-lg sticky top-0 z-30">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-xl md:text-2xl font-bold">Event Seating Plan</h1>
+                <button id="showAllButton" class="bg-[#e7f2ff] text-[#003f61] font-semibold px-4 py-2 rounded-lg hover:bg-white transition-colors duration-200">
+                    <i class="fas fa-users mr-2"></i>All Guests
+                </button>
+            </div>
+        </header>
+
+        <!-- Legend -->
+        <div class="container mx-auto p-4 flex justify-center items-center gap-4 md:gap-6 flex-wrap">
+            <div class="flex items-center gap-2 text-sm"><span class="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>Host</div>
+            <div class="flex items-center gap-2 text-sm"><span class="w-4 h-4 rounded-full bg-[#2e3d4b]"></span>Occupied</div>
+            <div class="flex items-center gap-2 text-sm"><span class="w-4 h-4 rounded-full bg-transparent border-2 border-dashed border-[#2e3d4b]"></span>Available</div>
+        </div>
+
+        <!-- Main Seating Grid -->
+        <main id="seating-grid" class="container mx-auto p-4 md:p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12 lg:gap-16">
+            <!-- Tables will be dynamically inserted here -->
+        </main>
+    </div>
+
+    <!-- Seat Details Sidebar -->
+    <aside id="seat-sidebar" class="fixed top-0 right-0 h-full w-full max-w-sm bg-[#f7f9ff] shadow-2xl p-6 z-50 flex flex-col">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-[#003f61]">Seat Details</h2>
+            <button id="close-sidebar" class="text-2xl text-gray-500 hover:text-[#de3730] transition-colors">&times;</button>
+        </div>
+        <div id="sidebar-content" class="flex-grow overflow-y-auto">
+            <!-- Seat details will be dynamically inserted here -->
+        </div>
+    </aside>
+
+    <!-- Table & All Guests Modal -->
+    <div id="details-modal-overlay" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-40">
+        <div id="details-modal-content" class="modal-content bg-[#f7f9ff] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-5 border-b border-gray-200">
+                <h2 id="modal-title" class="text-2xl font-bold text-[#003f61]">Details</h2>
+                <button id="close-modal" class="text-2xl text-gray-500 hover:text-[#de3730] transition-colors">&times;</button>
+            </div>
+            <div id="modal-body" class="p-6 overflow-y-auto">
+                <!-- Modal content will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+    
+    <div id="backdrop" class="fixed inset-0 bg-black bg-opacity-40 z-30 hidden"></div>
+
+
+    <script>
+        const seatingData = [
+            {"tableId":1,"seatNumber":1,"isHost":true,"name":"Surachai Tang","company":"Factory Max","status":"President (Our Team - VVIP)"},
+            {"tableId":1,"seatNumber":2,"isHost":false,"name":"Mr. Hiroji Goto","company":"NS TOOL","status":"President (Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":3,"isHost":false,"name":"Dr. Toshitaka MINS TOOL","company":"Consultant","status":"(Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":4,"isHost":false,"name":"Mr. Norihiko Su","company":"XEBEC TECHN","status":"President & CEO (Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":5,"isHost":false,"name":"Mr. Masanao Iv","company":"Iwata Tool JP","status":"President (Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":6,"isHost":false,"name":"Ms. Yumi Tanoi","company":"TANOI MFG.CO","status":"PRESIDENT (Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":7,"isHost":false,"name":"Mr. Haruki Mizo","company":"MST CORPOR","status":"President (Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":8,"isHost":false,"name":"Mr. Atsuhi Take","company":"Special Guest","status":"(Suppliers - VVIP)"},
+            {"tableId":1,"seatNumber":9,"isHost":false,"name":"Ms. Yuko Adach","company":"NS TOOL","status":"Managing Director (Suppliers - VIP)"},
+            {"tableId":1,"seatNumber":10,"isHost":false,"name":"Ms. Mizue Tash","company":"Bunri","status":"Director Management Dept. (Hosted by PC6)"},
+            {"tableId":2,"seatNumber":1,"isHost":true,"name":"Surapong Tang","company":"Factory Max","status":"Managing Director (Our Team - VVIP)"},
+            {"tableId":2,"seatNumber":2,"isHost":false,"name":"Mr. Taizo Iwaka","company":"Daiwa Rabin //","status":"President & CEO (Suppliers - VIP)"},
+            {"tableId":2,"seatNumber":3,"isHost":false,"name":"Khun Suwit","company":"Toyota & Netwd","status":"(Customer - VVIP)"},
+            {"tableId":2,"seatNumber":4,"isHost":false,"name":"Khun Weerayut","company":"Toyota & Netwo","status":"(Customer - VVIP)"},
+            {"tableId":2,"seatNumber":5,"isHost":false,"name":"Khun Anuwat","company":"Toyota & Netwo","status":"AVP Tooling department (Customer - VIP)"},
+            {"tableId":2,"seatNumber":6,"isHost":false,"name":"YOSHINOBU H","company":"OGUSU","status":"MD (Customer - VIP)"},
+            {"tableId":2,"seatNumber":7,"isHost":false,"name":"Mr. Shannon Fr","company":"Zeiss","status":"Head of Sales & Service (Suppliers - VVIP)"},
+            {"tableId":2,"seatNumber":8,"isHost":false,"name":"Kanokwan Apiv","company":"Factory Max","status":"Application Engineer (Free - Japanese)"},
+            {"tableId":2,"seatNumber":9,"isHost":false,"name":"Mr. Hiroaki Tsur","company":"ALPS TOOL","status":"Vice President (Suppliers - VIP)"},
+            {"tableId":2,"seatNumber":10,"isHost":false,"name":"Ms. Paveena K","company":"ALPS TOOL","status":"Manager of Sale Dept. (Suppliers - VIP)"},
+            {"tableId":3,"seatNumber":1,"isHost":true,"name":"Chalat Tangtar","company":"Factory Max","status":"Product Chief 1 (PC1) (Our Team - VVIP)"},
+            {"tableId":3,"seatNumber":2,"isHost":false,"name":"Hidehito Otsul","company":"Factory Max","status":"Application Manager (Free - Japanese)"},
+            {"tableId":3,"seatNumber":3,"isHost":false,"name":"Mr. Shuji Kodar","company":"NS TOOL","status":"International Sales Manager (Hosted by PC1)"},
+            {"tableId":3,"seatNumber":4,"isHost":false,"name":"Mr. Daisuke Iwa","company":"NS TOOL","status":"General Manager (Suppliers - VIP)"},
+            {"tableId":3,"seatNumber":5,"isHost":false,"name":"Mr. Shigetoshi","company":"EROWA","status":"Managing Director (Hosted by PC3)"},
+            {"tableId":3,"seatNumber":6,"isHost":false,"name":"Mr. Tomoyuki S","company":"NS TOOL","status":"Senior Sales (Hosted by PC1)"},
+            {"tableId":3,"seatNumber":7,"isHost":false,"name":"Mr. Hiroyuki Tor","company":"C&G System","status":"President (Suppliers - VIP)"},
+            {"tableId":3,"seatNumber":8,"isHost":false,"name":"Mr. Atsushi Kas","company":"CGS ASIA","status":"General manager (Hosted by PC3)"},
+            {"tableId":3,"seatNumber":9,"isHost":false,"name":"Mr. Naoki Sato","company":"C&G System","status":"Oversea General Manager (Hosted by PC3)"},
+            {"tableId":3,"seatNumber":10,"isHost":false,"name":"Chadanai Chor","company":"Factory Max","status":"Zone Product Manager (Hosted by PC1/4)"},
+            {"tableId":4,"seatNumber":1,"isHost":true,"name":"Jirapol Tangtara","company":"Factory Max","status":"Senior Sales Director (Our Team - VVIP)"},
+            {"tableId":4,"seatNumber":2,"isHost":true,"name":"Songphon Cho","company":"Factory Max","status":"Product Chief 2 (PC2) (Our Team - PC2)"},
+            {"tableId":4,"seatNumber":3,"isHost":false,"name":"Mr. Seungmyed","company":"Daiwa Rabin //","status":"Sales Engineer (Hosted by PC2)"},
+            {"tableId":4,"seatNumber":4,"isHost":false,"name":"Mr. Tomokazu A","company":"XEBEC TECHN","status":"Manager (Hosted by PC2)"},
+            {"tableId":4,"seatNumber":5,"isHost":false,"name":"Ms. Nutnicha Ta","company":"VSM","status":"Head of Office Desk Thailand (Hosted by PC2)"},
+            {"tableId":4,"seatNumber":6,"isHost":false,"name":"Mr. Masaaki Yo","company":"YOSHIDA MFG","status":"DIRECTOR (Hosted by PC2)"},
+            {"tableId":4,"seatNumber":7,"isHost":false,"name":"Suparada Sant","company":"Factory Max","status":"Zone Product Manager (Hosted by PC2)"},
+            {"tableId":4,"seatNumber":8,"isHost":false,"name":"Mr. Chun Jong","company":"DTR","status":"CEO (Suppliers - VIP)"},
+            {"tableId":4,"seatNumber":9,"isHost":false,"name":"Mr. Larry Kim","company":"Deerfos SFC","status":"(Customer - VIP)"},
+            {"tableId":4,"seatNumber":10,"isHost":false,"name":"Khun Suradech","company":"Siam AT","status":"(Customer - VIP)"},
+            {"tableId":5,"seatNumber":1,"isHost":true,"name":"Kolatee Senee","company":"Factory Max","status":"Product Chief 3 (PC3) (Our Team - PC3)"},
+            {"tableId":5,"seatNumber":2,"isHost":false,"name":"Mr. Nobuyuki A","company":"Blum","status":"Managing Director (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":3,"isHost":false,"name":"Mr. George Sie","company":"Blum","status":"Sales Director (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":4,"isHost":false,"name":"Ms. Chacriya F","company":"Blum-Novotest","status":"Assistant Manager (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":5,"isHost":false,"name":"Mr. Sascha Gra","company":"MPDV Asia","status":"Managing Director (Suppliers - VIP)"},
+            {"tableId":5,"seatNumber":6,"isHost":false,"name":"Mr. Terrance G","company":"MPDV Asia","status":"Account Manager (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":7,"isHost":false,"name":"Mr. Daniel Ong","company":"MPDV Asia","status":"CSO (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":8,"isHost":false,"name":null},
+            {"tableId":5,"seatNumber":9,"isHost":false,"name":"Mr. James Ooi","company":"Filtermist","status":"Business Development Asia Pacific (Hosted by PC3)"},
+            {"tableId":5,"seatNumber":10,"isHost":false,"name":"Mr. Theeraphor","company":"Zeiss","status":"Managing Director (Hosted by PC3)"},
+            {"tableId":6,"seatNumber":1,"isHost":true,"name":"Nattapat Tantiy","company":"Factory Max","status":"Product Chief 4 (PC4) (Our Team - PC4)"},
+            {"tableId":6,"seatNumber":2,"isHost":false,"name":"Mr. Teruo Aoki","company":"ATOM","status":"General manager (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":3,"isHost":false,"name":"Mr. Satoru Ichik","company":"ATOM","status":"General Manager (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":4,"isHost":false,"name":"Mr. Yuuki Nishin","company":"Crea Borer","status":"Production Engineering Advisor (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":5,"isHost":false,"name":"Mr. Hiroshi Tera","company":"Crea Borer / Nis","status":"Representative Director (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":6,"isHost":false,"name":"Mr. Toshiki Imai","company":"Cyber-RC","status":"Technical sale (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":7,"isHost":false,"name":"Mr. Hiroaki Och","company":"EIKOSHA CO.","status":"President (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":8,"isHost":false,"name":"Mr. Sano Ryout","company":"EIKOSHA CO.","status":"Sales Representative (Hosted by PC4)"},
+            {"tableId":6,"seatNumber":9,"isHost":false,"name":"Nattee Charads","company":"Factory Max","status":"Zone Product Manager (Hosted by PC1/4)"},
+            {"tableId":6,"seatNumber":10,"isHost":false,"name":null},
+            {"tableId":7,"seatNumber":1,"isHost":true,"name":"Hitoshi Abe","company":"Factory Max","status":"Senior Sales Director (Our Team - VIP)"},
+            {"tableId":7,"seatNumber":2,"isHost":false,"name":"Mr. Mangesh A","company":"ZECHA","status":"General Manager (Hosted by PC4)"},
+            {"tableId":7,"seatNumber":3,"isHost":false,"name":"Vidhu Nevatia","company":"ZECHA","status":"(Hosted by PC4)"},
+            {"tableId":7,"seatNumber":4,"isHost":false,"name":"Saurabh Raut","company":"ZECHA","status":"(Hosted by PC4)"},
+            {"tableId":7,"seatNumber":5,"isHost":false,"name":"Mr. Nick Trott","company":"M.A. FORD","status":"Technical Director (Hosted by PC4)"},
+            {"tableId":7,"seatNumber":6,"isHost":false,"name":"Masaya Suzuki","company":"NAKANISHI.INC","status":"Industrial Sales Dept. (Hosted by PC4)"},
+            {"tableId":7,"seatNumber":7,"isHost":false,"name":"Mr. Taro Kiyama","company":"Mikro Welt Co., Ltd.","status":"President (Hosted by PC4)"},
+            {"tableId":7,"seatNumber":8,"isHost":false,"name":"Chontida Sillas","company":"Factory Max","status":"Zone Product Manager (Hosted by PC1/4/2)"},
+            {"tableId":7,"seatNumber":9,"isHost":false,"name":"Customer","company":"Abe's Customer","status":"Waiting for confirm"},
+            {"tableId":7,"seatNumber":10,"isHost":false,"name":"Customer","company":"Abe's Customer","status":"Waiting for confirm"},
+            {"tableId":8,"seatNumber":1,"isHost":true,"name":"Sakchai Suapr","company":"Factory Max","status":"Product Chief 7 (PC7) (Our Team - PC7)"},
+            {"tableId":8,"seatNumber":2,"isHost":false,"name":"Mr. Johnny","company":"EST","status":"Sales Manager (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":3,"isHost":false,"name":"Mr. Yao Xingan","company":"EST","status":"(Hosted by PC7)"},
+            {"tableId":8,"seatNumber":4,"isHost":false,"name":"Mr. Chad Hong","company":"GRIP","status":"DIRECTOR (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":5,"isHost":false,"name":"Ms. Tomoyo Hd","company":"Kato","status":"Sales Manager (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":6,"isHost":false,"name":"Vorapat Russar","company":"Factory Max","status":"Zone Product Manager (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":7,"isHost":false,"name":"Nopporn Thaipr","company":"Factory Max","status":"Zone Product Manager (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":8,"isHost":false,"name":"Khun Poramate","company":"Taegutec","status":"General Manager (Hosted by PC7)"},
+            {"tableId":8,"seatNumber":9,"isHost":false,"name":null},
+            {"tableId":8,"seatNumber":10,"isHost":false,"name":null},
+            {"tableId":9,"seatNumber":1,"isHost":true,"name":"Wittaya Tawee","company":"Factory Max","status":"General Manager (Our Team)"},
+            {"tableId":9,"seatNumber":2,"isHost":false,"name":"Mr. Dylan Khor","company":"Tungaloy","status":"Managing Director (Suppliers - VIP)"},
+            {"tableId":9,"seatNumber":3,"isHost":false,"name":"คุณ ฟ้าใส ภาวะ","company":"Tungaloy","status":"General Manager (Suppliers - VIP)"},
+            {"tableId":9,"seatNumber":4,"isHost":false,"name":"Thanyaporn An","company":"Factory Max","status":"Marketing (Free - Support)"},
+            {"tableId":9,"seatNumber":5,"isHost":false,"name":"Mr. Yi-Kuan Wa","company":"PARFAITE TOOL","status":"President (Suppliers - VIP)"},
+            {"tableId":9,"seatNumber":6,"isHost":false,"name":"Mr. Khan, Raha","company":"PARFAITE TOOL","status":"Sales (Hosted by PC7)"},
+            {"tableId":9,"seatNumber":7,"isHost":false,"name":"Ms. Alice Ding","company":"Worldia","status":"Sales Manager (Hosted by PC7)"},
+            {"tableId":9,"seatNumber":8,"isHost":false,"name":"Zhang xiyue","company":"Worldia","status":"(Hosted by PC7)"},
+            {"tableId":9,"seatNumber":9,"isHost":false,"name":null},
+            {"tableId":9,"seatNumber":10,"isHost":false,"name":null},
+            {"tableId":10,"seatNumber":1,"isHost":true,"name":"Wissanupong","company":"Factory Max","status":"Product Chief 6 (PC6) (Our Team - PC6)"},
+            {"tableId":10,"seatNumber":2,"isHost":true,"name":"Keiko Katagav","company":"Factory Max","status":"Senior Sales Director (Our Team - VIP)"},
+            {"tableId":10,"seatNumber":3,"isHost":false,"name":"Hiroshi Yokoi","company":"OGUSU INDUSTRY CO., LTD","status":"Factory Manager (Hosted by PC6)"},
+            {"tableId":10,"seatNumber":4,"isHost":false,"name":"Akihiro Tsunoda","company":"World Chemical Co., Ltd","status":"Director (Suppliers - VIP)"},
+            {"tableId":10,"seatNumber":5,"isHost":false,"name":"Mr. Yusei Kawa","company":"World Chemical Co., Ltd","status":"Sales (Hosted by PC6)"},
+            {"tableId":10,"seatNumber":6,"isHost":false,"name":"Mr. Kenichi Sak","company":"Bunri","status":"Technical Advisor (Suppliers - VIP)"},
+            {"tableId":10,"seatNumber":7,"isHost":false,"name":null},
+            {"tableId":10,"seatNumber":8,"isHost":false,"name":null},
+            {"tableId":10,"seatNumber":9,"isHost":false,"name":null},
+            {"tableId":10,"seatNumber":10,"isHost":false,"name":null},
+            {"tableId":11,"seatNumber":1,"isHost":false,"name":"Kongpon Lertj","company":"Factory Max","status":"Zone Product Manager (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":2,"isHost":false,"name":"Phakhaporn Th","company":"Factory Max","status":"Zone Product Manager (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":3,"isHost":false,"name":"Kanatpapot Pe","company":"Factory Max","status":"Zone Product Manager (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":4,"isHost":false,"name":"Mr. Rungsiwut","company":"Fluke","status":"Territory Sales Manager (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":5,"isHost":false,"name":"Mr. Sakdipat Jir","company":"MAHR","status":"(Hosted by PC3)"},
+            {"tableId":11,"seatNumber":6,"isHost":false,"name":"Ms. Sudarat Ko","company":"MAHR","status":"(Hosted by PC3)"},
+            {"tableId":11,"seatNumber":7,"isHost":false,"name":"Thongkaow Sila","company":"Ruwac","status":"(Hosted by PC3)"},
+            {"tableId":11,"seatNumber":8,"isHost":false,"name":"Mr. Nattapon S","company":"Zeiss","status":"Product Sales Manager (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":9,"isHost":false,"name":"Mr. Tanyathep","company":"Zeiss","status":"Head of Sales and Service Thailand (Hosted by PC3)"},
+            {"tableId":11,"seatNumber":10,"isHost":false,"name":"Mr. Roger Ting","company":"Zeiss","status":"Regional Product Sales Manager (Hosted by PC3)"},
+            {"tableId":12,"seatNumber":1,"isHost":true,"name":"Chonlatee Saiy","company":"Factory Max","status":"Senior Sales Director (Our Team - VIP)"},
+            {"tableId":12,"seatNumber":2,"isHost":false,"name":"Mr. Jakarin","company":"Fujikura (Lampoon)","status":"(Customer - VIP)"},
+            {"tableId":12,"seatNumber":3,"isHost":false,"name":"Mr. Wirot","company":"Fujikura (Lampoon)","status":"(Customer - VIP)"},
+            {"tableId":12,"seatNumber":4,"isHost":false,"name":"Palakorn Kham","company":"Factory Max","status":"Key Account Sales Manager (Free - Japanese)"},
+            {"tableId":12,"seatNumber":5,"isHost":false,"name":"Ms. Zhou Shua","company":"MST CORPORATION","status":"(Hosted by PC7)"},
+            {"tableId":12,"seatNumber":6,"isHost":false,"name":"Ms. Mako Miya","company":"MST CORPORATION","status":"(Hosted by PC7)"},
+            {"tableId":12,"seatNumber":7,"isHost":false,"name":"Mr. Damiano Lo","company":"GERARDI","status":"Export Manager (Hosted by PC7)"},
+            {"tableId":12,"seatNumber":8,"isHost":false,"name":"Mr. Bobby Loh","company":"Alloyplas","status":"Managing Director (Free)"},
+            {"tableId":12,"seatNumber":9,"isHost":false,"name":"Sales 5","company":"Factory Max","status":"(Free)"},
+            {"tableId":12,"seatNumber":10,"isHost":false,"name":"Sales 3","company":"Factory Max","status":"(Free)"}
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const grid = document.getElementById('seating-grid');
+            const totalTables = 12;
+            const seatsPerTable = 10;
+
+            const backdrop = document.getElementById('backdrop');
+            const seatSidebar = document.getElementById('seat-sidebar');
+            const closeSidebarBtn = document.getElementById('close-sidebar');
+            const sidebarContent = document.getElementById('sidebar-content');
+            
+            const modalOverlay = document.getElementById('details-modal-overlay');
+            const modalTitle = document.getElementById('modal-title');
+            const modalBody = document.getElementById('modal-body');
+            const closeModalBtn = document.getElementById('close-modal');
+            const showAllButton = document.getElementById('showAllButton');
+
+            function renderSeatingPlan() {
+                for (let i = 1; i <= totalTables; i++) {
+                    const tableContainer = document.createElement('div');
+                    tableContainer.className = 'relative aspect-square table-container';
+
+                    const tableCenter = document.createElement('div');
+                    tableCenter.className = 'table-center absolute inset-0 m-auto w-[35%] h-[35%] bg-[#f7f9ff] rounded-full flex items-center justify-center text-2xl md:text-3xl font-bold text-[#003f61] border-4 border-[#003f61] shadow-lg cursor-pointer';
+                    tableCenter.textContent = `T${i}`;
+                    tableCenter.dataset.tableId = i;
+                    tableContainer.appendChild(tableCenter);
+
+                    const angleStep = 360 / seatsPerTable;
+                    for (let j = 1; j <= seatsPerTable; j++) {
+                        const seatData = seatingData.find(s => s.tableId === i && s.seatNumber === j);
+                        const seat = document.createElement('div');
+                        
+                        let seatClasses = 'seat absolute w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xs font-bold transform -translate-x-1/2 -translate-y-1/2 shadow-md';
+                        
+                        if (seatData && seatData.name) {
+                            seat.dataset.tableId = i;
+                            seat.dataset.seatNumber = j;
+                            seat.textContent = j;
+                            seat.classList.add('cursor-pointer');
+                            if (seatData.isHost) {
+                                seatClasses += ' bg-yellow-400 text-[#2e3d4b]';
+                                seat.innerHTML = `<i class="fas fa-star"></i>`;
+                            } else {
+                                seatClasses += ' bg-[#2e3d4b] text-white';
+                            }
+                        } else {
+                            seatClasses += ' bg-transparent border-2 border-dashed border-[#2e3d4b]';
+                        }
+                        seat.className = seatClasses;
+
+                        const angle = angleStep * (j - 1) - 90; // Start from top
+                        const radius = 45; // Percentage from center
+                        const x = 50 + radius * Math.cos(angle * Math.PI / 180);
+                        const y = 50 + radius * Math.sin(angle * Math.PI / 180);
+                        seat.style.left = `${x}%`;
+                        seat.style.top = `${y}%`;
+
+                        tableContainer.appendChild(seat);
+                    }
+                    grid.appendChild(tableContainer);
+                }
+            }
+
+            function showSeatDetails(tableId, seatNumber) {
+                const data = seatingData.find(s => s.tableId == tableId && s.seatNumber == seatNumber);
+                if (!data || !data.name) return;
+
+                sidebarContent.innerHTML = `
+                    <div class="space-y-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Seat</p>
+                            <p class="text-lg font-semibold text-[#003f61]">T${data.tableId}-S${data.seatNumber}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Name</p>
+                            <p class="text-lg font-semibold text-[#003f61]">${data.name}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Company</p>
+                            <p class="text-lg font-semibold text-[#003f61]">${data.company || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Status</p>
+                            <p class="text-lg font-semibold text-[#003f61]">${data.status || 'N/A'}</p>
+                        </div>
+                        ${data.isHost ? '<div class="mt-4 p-3 bg-yellow-100 text-yellow-800 rounded-lg flex items-center gap-2"><i class="fas fa-star"></i><span>This guest is a host.</span></div>' : ''}
+                    </div>
+                `;
+                seatSidebar.classList.add('active');
+                backdrop.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function showTableDetails(tableId) {
+                const tableGuests = seatingData.filter(s => s.tableId == tableId && s.name);
+                modalTitle.textContent = `Guests at Table ${tableId}`;
+                
+                let content = '<ul class="space-y-3">';
+                tableGuests.forEach(guest => {
+                    content += `
+                        <li class="p-3 bg-[#e7f2ff] rounded-lg flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-full ${guest.isHost ? 'bg-yellow-400' : 'bg-[#2e3d4b]'} text-white flex-shrink-0 flex items-center justify-center font-bold">
+                                ${guest.isHost ? `<i class="fas fa-star text-yellow-800"></i>` : `S${guest.seatNumber}`}
+                            </div>
+                            <div>
+                                <p class="font-bold text-[#003f61]">${guest.name}</p>
+                                <p class="text-sm text-gray-600">${guest.company || ''}</p>
+                                <p class="text-xs text-gray-500 italic">${guest.status || ''}</p>
+                            </div>
+                        </li>
+                    `;
+                });
+                content += '</ul>';
+                modalBody.innerHTML = content;
+                modalOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function showAllGuests() {
+                modalTitle.textContent = 'All Guests';
+                let content = '<div class="space-y-6">';
+                for (let i = 1; i <= totalTables; i++) {
+                    const tableGuests = seatingData.filter(s => s.tableId === i && s.name);
+                    if (tableGuests.length > 0) {
+                        content += `<div><h3 class="text-xl font-bold text-[#003f61] mb-3 border-b-2 border-[#003f61] pb-1">Table ${i}</h3>`;
+                        content += '<ul class="space-y-2">';
+                        tableGuests.forEach(guest => {
+                            content += `
+                                <li class="flex items-center gap-3 text-sm">
+                                    <span class="w-16 text-center font-semibold text-gray-600">[T${guest.tableId}-S${guest.seatNumber}]</span>
+                                    <span class="font-semibold text-[#2e3d4b]">${guest.name} ${guest.isHost ? '<i class="fas fa-star text-yellow-500 ml-1"></i>' : ''}</span>
+                                </li>
+                            `;
+                        });
+                        content += '</ul></div>';
+                    }
+                }
+                content += '</div>';
+                modalBody.innerHTML = content;
+                modalOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function hideSidebar() {
+                seatSidebar.classList.remove('active');
+                if (!modalOverlay.classList.contains('active')) {
+                    backdrop.classList.add('hidden');
+                    document.body.style.overflow = '';
+                }
+            }
+
+            function hideModal() {
+                modalOverlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            grid.addEventListener('click', (e) => {
+                const seat = e.target.closest('.seat');
+                const table = e.target.closest('.table-center');
+
+                if (seat && seat.dataset.tableId) {
+                    showSeatDetails(seat.dataset.tableId, seat.dataset.seatNumber);
+                } else if (table && table.dataset.tableId) {
+                    showTableDetails(table.dataset.tableId);
+                }
+            });
+
+            closeSidebarBtn.addEventListener('click', hideSidebar);
+            backdrop.addEventListener('click', hideSidebar);
+            closeModalBtn.addEventListener('click', hideModal);
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    hideModal();
+                }
+            });
+            showAllButton.addEventListener('click', showAllGuests);
+
+            renderSeatingPlan();
+        });
+    </script>
+</body>
+</html>
